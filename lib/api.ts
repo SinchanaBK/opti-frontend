@@ -16,21 +16,10 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, token?: stri
 }
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    apiFetch<AuthResponse>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
-
-  register: (name: string, email: string, password: string) =>
-    apiFetch<AuthResponse>("/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ name, email, password }),
-    }),
-
-  me: (token: string) =>
-    apiFetch<User>("/auth/me", {}, token),
+  login:  (email: string, password: string) => apiFetch<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  me:     (token: string) => apiFetch<User>("/auth/me", {}, token),
 };
+
 export const assetsApi = {
   getAll: (token: string) => apiFetch<Asset[]>("/assets/", {}, token),
   getMy:  (token: string) => apiFetch<Asset[]>("/assets/my", {}, token),
@@ -48,4 +37,4 @@ export const usersApi = {
 
 export const dashboardApi = {
   getStats: (token: string) => apiFetch<DashboardStats>("/dashboard/stats", {}, token),
-};
+}; 
