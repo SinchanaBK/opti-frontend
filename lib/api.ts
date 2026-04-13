@@ -16,8 +16,20 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, token?: stri
 }
 
 export const authApi = {
-  login:  (email: string, password: string) => apiFetch<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
-  me:     (token: string) => apiFetch<User>("/auth/me", {}, token),
+  register: (name: string, email: string, password: string) =>
+    apiFetch<AuthResponse>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ name, email, password }),
+    }),
+
+  login: (email: string, password: string) =>
+    apiFetch<AuthResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+
+  me: (token: string) =>
+    apiFetch<User>("/auth/me", {}, token),
 };
 
 export const assetsApi = {
