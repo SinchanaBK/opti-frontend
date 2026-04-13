@@ -38,3 +38,8 @@ export const usersApi = {
 export const dashboardApi = {
   getStats: (token: string) => apiFetch<DashboardStats>("/dashboard/stats", {}, token),
 };
+register: (name: string, email: string, password: string) =>
+  apiFetch("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ name, email, password }),
+  }),
