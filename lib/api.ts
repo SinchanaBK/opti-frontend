@@ -1,123 +1,65 @@
-import os
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from database import engine, Base, SessionLocal
-from routers import auth_router, assets_router, users_router, dashboard_router
+import type {
+  AuthResponse, Asset, AssetCreate, AssetUpdate,
+  DashboardStats, User, UserCreate
+} from "@/types";
 
-Base.metadata.create_all(bind=engine)
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-def auto_seed():
-    from models import Permission, Role, User, Asset
-    from core.security import hash_password
-    db = SessionLocal()
-    try:
-        if db.query(User).first():
-            print("✅ DB already seeded")
-            return
-        print("🌱 Seeding...")
-        perms_data = [
-            ("view:inventory","View all assets"),
-            ("view:my_gear","View own assets"),
-            ("create:asset","Add assets"),
-            ("update:asset","Edit assets"),
-            ("delete:asset","Remove assets"),
-            ("manage:users","Manage users"),
-        ]
-        perms = {}
-        for name, desc in perms_data:
-            p = Permission(name=name, description=desc)
-            db.add(p); db.flush(); perms[name] = p
+async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> || {}),
+  };
 
-        admin_role = Role(name="Admin")
-        db.add(admin_role); db.flush()
-        admin_role.permissions = list(perms.values())
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
-        emp_role = Role(name="Employee")
-        db.add(emp_role); db.flush()
-        emp_role.permissions = [perms["view:my_gear"]]
-        db.commit()
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
 
-        users_data = [
-            ("Opti Admin",   "admin@gmail.com", "admin123", admin_role.id),
-            ("Johnson","john@gmail.com", "john123", emp_role.id),
-            ("Akash", "akash@gmail.com",   "akash123",   emp_role.id),
-            
-        ]
-        user_map = {}
-        for full_name, email, pwd, role_id in users_data:
-            u = User(full_name=full_name, email=email,
-                     hashed_password=hash_password(pwd), role_id=role_id)
-            db.add(u); db.flush(); user_map[email] = u
-        db.commit()
+  if (res.status === 204) return undefined as T;
 
-        assets_data = [
-            ('MacBook Pro 14"', 'OPTI-001','Laptop',   'assigned', 2499.99, user_map['alice@opti.com'].id),
-            ('Dell XPS 15',     'OPTI-002','Laptop',   'assigned', 1899.00, user_map['bob@opti.com'].id),
-            ('LG UltraWide',    'OPTI-003','Monitor',  'available', 699.00, None),
-            ('iPhone 15 Pro',   'OPTI-004','Phone',    'assigned',  999.00, user_map['carol@opti.com'].id),
-            ('Logitech MX Keys','OPTI-005','Keyboard', 'available', 109.99, None),
-            ('Sony WH-1000XM5', 'OPTI-006','Headset',  'assigned',  349.99, user_map['alice@opti.com'].id),
-            ('Standing Desk',   'OPTI-007','Furniture','available', 799.00, None),
-            ('Cisco IP Phone',  'OPTI-008','Phone',    'retired',   149.99, None),
-            ('Samsung 27" 4K',  'OPTI-009','Monitor',  'assigned',  549.00, user_map['bob@opti.com'].id),
-            ('Ergonomic Chair', 'OPTI-010','Furniture','available', 599.00, None),
-        ]
-        for name, tag, cat, status, value, uid in assets_data:
-            db.add(Asset(name=name, asset_tag=tag, category=cat,
-                         status=status, value=value, assigned_to_id=uid))
-        db.commit()
-        print("✅ Seeded!  admin@opti.com / admin123")
-    except Exception as e:
-        db.rollback()
-        print(f"❌ Seed failed: {e}")
-        import traceback; traceback.print_exc()
-    finally:
-        db.close()
+  const data = await res.json();
 
-auto_seed()
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("Session expired. Please log in again.");
+    if (res.status === 403) throw new Error("Access denied. You don't have permission.");
+    const message = data?.detail;
+    throw new Error(typeof message === "string" ? message : JSON.stringify(message));
+  }
 
-app = FastAPI(title="Opti Asset Management API", version="1.0.0")
+  return data as T;
+}
 
-_env_origins = os.getenv("ALLOWED_ORIGINS", "")
-_extra = [o.strip() for o in _env_origins.split(",") if o.strip()]
+export const authApi = {
+  login: (email: string, password: string) =>
+    apiFetch<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  me: (token: string) => apiFetch<User>("/auth/me", {}, token),
+};
 
-origins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://opti-frontend-7z18xauv6-sinchanabk13-5254s-projects.vercel.app",
-    *_extra,
-]
+export const assetsApi = {
+  getAll: (token: string) => apiFetch<Asset[]>("/assets/", {}, token),
+  getMy:  (token: string) => apiFetch<Asset[]>("/assets/my", {}, token),
+  getOne: (id: number, token: string) => apiFetch<Asset>(`/assets/${id}`, {}, token),
+  create: (p: AssetCreate, token: string) => apiFetch<Asset>("/assets/", { method: "POST", body: JSON.stringify(p) }, token),
+  update: (id: number, p: AssetUpdate, token: string) => apiFetch<Asset>(`/assets/${id}`, { method: "PUT", body: JSON.stringify(p) }, token),
+  delete: (id: number, token: string) => apiFetch<void>(`/assets/${id}`, { method: "DELETE" }, token),
+};
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=r"https://opti-frontend.*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=[
-        "Authorization", "Content-Type", "Accept", "Origin",
-        "X-Requested-With", "Access-Control-Request-Method",
-        "Access-Control-Request-Headers",
-    ],
-    expose_headers=["Authorization"],
-    max_age=3600,
-)
+export const usersApi = {
+  getAll: (token: string) => apiFetch<User[]>("/users/", {}, token),
+  create: (p: UserCreate, token: string) => apiFetch<User>("/users/", { method: "POST", body: JSON.stringify(p) }, token),
+  delete: (id: number, token: string) => apiFetch<void>(`/users/${id}`, { method: "DELETE" }, token),
+};
 
-app.include_router(auth_router.router)
-app.include_router(assets_router.router)
-app.include_router(users_router.router)
-app.include_router(dashboard_router.router)
-
-@app.get("/", tags=["Health"])
-def root():
-    return {"status": "ok", "message": "Opti API running"}
-
-@app.get("/health", tags=["Health"])
-def health():
-    from models import User
-    db = SessionLocal()
-    try:
-        count = db.query(User).count()
-        return {"status": "ok", "users_in_db": count}
-    finally:
-        db.close()
+export const dashboardApi = {
+  getStats: (token: string) => apiFetch<DashboardStats>("/dashboard/stats", {}, token),
+};
